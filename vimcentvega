@@ -28,6 +28,7 @@
         name:
           - vim
           - curl
+          - bash
         state: present
 
     - name: Create Vim autoload directory
