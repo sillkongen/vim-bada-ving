@@ -1,11 +1,13 @@
 ---
-- name: Setup Vim with Plugins on localhost
+- name: Setup Vim with Plugins on localhost for specific user
   hosts: localhost
   connection: local
   become: yes
+  vars:
+    user: "admin"  # Replace 'admin' with your username if different
   tasks:
 
-    - name: Install Vim and curl on macOS
+    - name: Install Vim, curl, and bash on macOS
       when: ansible_os_family == "Darwin"
       homebrew:
         name:
@@ -13,16 +15,17 @@
           - curl
         state: present
 
-    - name: Install Vim and curl on Debian/Ubuntu
+    - name: Install Vim, curl, and bash on Debian/Ubuntu
       when: ansible_os_family == "Debian"
       apt:
         name:
           - vim
           - curl
+          - bash
         state: present
         update_cache: yes
 
-    - name: Install Vim and curl on Alpine Linux
+    - name: Install Vim, curl, and bash on Alpine Linux
       when: ansible_os_family == "Alpine"
       apk:
         name:
@@ -31,21 +34,25 @@
           - bash
         state: present
 
-    - name: Create Vim autoload directory
+    - name: Create Vim autoload directory for user
       file:
-        path: "{{ ansible_env.HOME }}/.vim/autoload"
+        path: "/home/{{ user }}/.vim/autoload"
         state: directory
         mode: '0755'
+        owner: "{{ user }}"
+        group: "{{ user }}"
 
-    - name: Download vim-plug
+    - name: Download vim-plug for user
       get_url:
         url: https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-        dest: "{{ ansible_env.HOME }}/.vim/autoload/plug.vim"
+        dest: "/home/{{ user }}/.vim/autoload/plug.vim"
         mode: '0644'
+        owner: "{{ user }}"
+        group: "{{ user }}"
 
-    - name: Copy .vimrc to home directory
+    - name: Copy .vimrc to user's home directory
       copy:
-        dest: "{{ ansible_env.HOME }}/.vimrc"
+        dest: "/home/{{ user }}/.vimrc"
         content: |
           {% raw %}
           " Disable compatibility with vi which can cause unexpected issues.
@@ -170,8 +177,11 @@
 
           " }}}
           {% endraw %}
+        owner: "{{ user }}"
+        group: "{{ user }}"
+        mode: '0644'
 
-    - name: Install Vim plugins using vim-plug
-      shell: vim +PlugInstall +qall
-      args:
-        executable: /bin/bash
+    - name: Install Vim plugins using vim-plug for user
+      become: yes
+      become_user: "{{ user }}"
+      shell: bash -lc 'vim +PlugInstall +qall'
