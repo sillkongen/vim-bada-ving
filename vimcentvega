@@ -4,9 +4,71 @@
   connection: local
   become: yes
   vars:
-    user: "admin"  # Replace 'admin' with your username if different
-  tasks:
+    # Default user - can be overridden via command line with -e user=your_username
+    user: "{{ ansible_user_id | default('root') }}"
+    # Platform-specific paths
+    is_windows: "{{ ansible_os_family == 'Windows' }}"
+    is_root: "{{ user == 'root' }}"
+    # Define base paths based on OS and user
+    base_path: "{{ is_windows | ternary('C:/Users/' + user, (is_root | ternary('/root', '/home/' + user))) }}"
+    # Platform-specific paths
+    vim_autoload_path: "{{ base_path }}/{{ is_windows | ternary('vimfiles/autoload', '.vim/autoload') }}"
+    vimrc_path: "{{ base_path }}/{{ is_windows | ternary('_vimrc', '.vimrc') }}"
+    vim_plugged_path: "{{ base_path }}/{{ is_windows | ternary('vimfiles/plugged', '.vim/plugged') }}"
+    # Shell to use for plugin installation
+    shell_cmd: "{{ is_windows | ternary('powershell.exe', 'bash') }}"
 
+  pre_tasks:
+    - name: Debug - Show path variables
+      debug:
+        msg:
+          - "is_windows: {{ is_windows }}"
+          - "is_root: {{ is_root }}"
+          - "base_path: {{ base_path }}"
+          - "Current user: {{ user }}"
+          - "Vim autoload path: {{ vim_autoload_path }}"
+          - "Vimrc path: {{ vimrc_path }}"
+          - "Vim plugged path: {{ vim_plugged_path }}"
+          - "OS Family: {{ ansible_os_family }}"
+
+    - name: Check if vim is installed
+      command: which vim
+      register: vim_check
+      changed_when: false
+      failed_when: false
+
+    - name: Debug - Show vim installation status
+      debug:
+        msg: "Vim installation status: {{ vim_check.rc == 0 | ternary('Installed', 'Not installed') }}"
+
+    - name: Get vim version
+      command: vim --version
+      register: vim_version
+      changed_when: false
+      when: vim_check.rc == 0
+
+    - name: Debug - Show vim version
+      debug:
+        msg: "Vim version: {{ vim_version.stdout_lines[0] }}"
+      when: vim_check.rc == 0
+
+  tasks:
+    # Windows-specific tasks
+    - name: Install Chocolatey (Windows package manager)
+      when: ansible_os_family == "Windows"
+      win_chocolatey:
+        name: chocolatey
+        state: present
+
+    - name: Install Vim and curl using Chocolatey on Windows
+      when: ansible_os_family == "Windows"
+      win_chocolatey:
+        name:
+          - vim
+          - curl
+        state: present
+
+    # macOS tasks
     - name: Install Vim, curl, and bash on macOS
       when: ansible_os_family == "Darwin"
       homebrew:
@@ -15,6 +77,7 @@
           - curl
         state: present
 
+    # Debian/Ubuntu tasks
     - name: Install Vim, curl, and bash on Debian/Ubuntu
       when: ansible_os_family == "Debian"
       apt:
@@ -25,6 +88,17 @@
         state: present
         update_cache: yes
 
+    # RHEL/CentOS tasks
+    - name: Install Vim, curl, and bash on RHEL/CentOS
+      when: ansible_os_family == "RedHat"
+      yum:
+        name:
+          - vim-enhanced
+          - curl
+          - bash
+        state: present
+
+    # Alpine Linux tasks
     - name: Install Vim, curl, and bash on Alpine Linux
       when: ansible_os_family == "Alpine"
       apk:
@@ -34,27 +108,69 @@
           - bash
         state: present
 
-    - name: Create Vim autoload directory for user
+    # Create Vim directories with proper permissions
+    - name: Create Vim directories
       file:
-        path: "/home/{{ user }}/.vim/autoload"
+        path: "{{ item }}"
         state: directory
         mode: '0755'
         owner: "{{ user }}"
         group: "{{ user }}"
+      with_items:
+        - "{{ vim_autoload_path }}"
+        - "{{ vim_plugged_path }}"
 
-    - name: Download vim-plug for user
+    # Download vim-plug with verification
+    - name: Download vim-plug
       get_url:
         url: https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-        dest: "/home/{{ user }}/.vim/autoload/plug.vim"
+        dest: "{{ vim_autoload_path }}/plug.vim"
         mode: '0644'
         owner: "{{ user }}"
         group: "{{ user }}"
+        validate_certs: true
+        timeout: 30
+        force: true
 
-    - name: Copy .vimrc to user's home directory
+    - name: Verify vim-plug installation
+      stat:
+        path: "{{ vim_autoload_path }}/plug.vim"
+      register: plug_check
+
+    - name: Debug - Show vim-plug installation status
+      debug:
+        msg: "Vim-plug installation status: {{ plug_check.stat.exists | ternary('Installed', 'Not installed') }}"
+
+    - name: Get vim-plug file info
+      command: sha256sum "{{ vim_autoload_path }}/plug.vim"
+      register: plug_checksum
+      changed_when: false
+      when: plug_check.stat.exists
+
+    - name: Debug - Show vim-plug checksum
+      debug:
+        msg: "Vim-plug checksum: {{ plug_checksum.stdout }}"
+      when: plug_check.stat.exists
+
+    # Copy .vimrc with verification
+    - name: Copy .vimrc
       copy:
-        dest: "/home/{{ user }}/.vimrc"
+        dest: "{{ vimrc_path }}"
         content: |
           {% raw %}
+          " Platform-specific settings
+          if has('win32') || has('win64')
+            set runtimepath^=C:/Users/{{ user }}/vimfiles
+            set runtimepath+=C:/Users/{{ user }}/vimfiles/after
+          endif
+
+          " Ensure vim-plug is loaded
+          if empty(glob('{{ vim_autoload_path }}/plug.vim'))
+            silent !curl -fLo {{ vim_autoload_path }}/plug.vim --create-dirs
+              \ https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+            autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+          endif
+
           " Disable compatibility with vi which can cause unexpected issues.
           set nocompatible
 
@@ -130,16 +246,33 @@
 
           " PLUGINS ---------------------------------------------------------------- {{{
 
-          call plug#begin('~/.vim/plugged')
+          call plug#begin('{{ vim_plugged_path }}')
 
+            " Linting and syntax checking
             Plug 'dense-analysis/ale'
+            
+            " File tree explorer
             Plug 'preservim/nerdtree'
+            
+            " Git integration
+            Plug 'tpope/vim-fugitive'
+            
+            " Status line enhancement
+            Plug 'vim-airline/vim-airline'
+            Plug 'vim-airline/vim-airline-themes'
 
           call plug#end()
 
           " }}}
 
           " MAPPINGS --------------------------------------------------------------- {{{
+
+          " Map NERDTree toggle to Ctrl+n
+          nnoremap <C-n> :NERDTreeToggle<CR>
+          
+          " Map ALE commands
+          nnoremap <leader>d :ALEDetail<CR>
+          nnoremap <leader>f :ALEFix<CR>
 
           " }}}
 
@@ -152,13 +285,9 @@
               autocmd FileType vim setlocal foldmethod=marker
           augroup END
 
-          " More Vimscripts code goes here.
-
           " }}}
 
           " STATUS LINE ------------------------------------------------------------ {{{
-
-          " Status bar code goes here.
 
           " Clear status line when vimrc is reloaded.
           set statusline=
@@ -181,7 +310,46 @@
         group: "{{ user }}"
         mode: '0644'
 
-    - name: Install Vim plugins using vim-plug for user
+    - name: Verify .vimrc installation
+      stat:
+        path: "{{ vimrc_path }}"
+      register: vimrc_check
+
+    - name: Debug - Show .vimrc installation status
+      debug:
+        msg: "Vimrc installation status: {{ vimrc_check.stat.exists | ternary('Installed', 'Not installed') }}"
+
+    # Install plugins with better error handling
+    - name: Install Vim plugins
       become: yes
       become_user: "{{ user }}"
-      shell: bash -lc 'vim +PlugInstall +qall'
+      shell: "{{ shell_cmd }} -lc 'vim -c \"PlugInstall\" -c \"qa!\"'"
+      args:
+        executable: "{{ shell_cmd }}"
+      register: plugin_install
+      changed_when: "'Already up to date' not in plugin_install.stdout"
+      failed_when: false
+
+    - name: Debug - Show plugin installation output
+      debug:
+        msg: "{{ plugin_install.stdout_lines }}"
+
+    - name: Verify plugin installation
+      stat:
+        path: "{{ vim_plugged_path }}"
+      register: plugin_dir_check
+
+    - name: Debug - Show plugin directory status
+      debug:
+        msg: "Plugin directory status: {{ plugin_dir_check.stat.exists | ternary('Exists', 'Does not exist') }}"
+
+    - name: List installed plugins
+      command: ls -la "{{ vim_plugged_path }}"
+      register: plugin_list
+      changed_when: false
+      when: plugin_dir_check.stat.exists
+
+    - name: Debug - Show installed plugins
+      debug:
+        msg: "{{ plugin_list.stdout_lines }}"
+      when: plugin_dir_check.stat.exists
