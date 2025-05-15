@@ -40,7 +40,7 @@ This Ansible playbook automates the setup of Vim with a modern configuration and
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/vim-bada-ving.git
+   git clone https://github.com/sillkongen/vim-bada-ving.git
    cd vim-bada-ving
    ```
 
