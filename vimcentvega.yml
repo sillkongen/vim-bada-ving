@@ -1,82 +1,30 @@
 ---
-- name: Setup Vim with Plugins on localhost for specific user
+- name: Setup Vim with Plugins for a specific user (Unix/Linux only)
   hosts: localhost
   connection: local
   become: yes
   vars:
-    # Default user - can be overridden via command line with -e user=your_username
-    user: "{{ ansible_user_id | default('root') }}"
-    # Platform-specific paths
-    is_windows: "{{ ansible_os_family == 'Windows' }}"
-    is_root: "{{ user == 'root' }}"
-    # Define base paths based on OS and user
-    base_path: "{{ is_windows | ternary('C:/Users/' + user, (is_root | ternary('/root', '/home/' + user))) }}"
-    # Platform-specific paths
-    vim_autoload_path: "{{ base_path }}/{{ is_windows | ternary('vimfiles/autoload', '.vim/autoload') }}"
-    vimrc_path: "{{ base_path }}/{{ is_windows | ternary('_vimrc', '.vimrc') }}"
-    vim_plugged_path: "{{ base_path }}/{{ is_windows | ternary('vimfiles/plugged', '.vim/plugged') }}"
-    # Shell to use for plugin installation
-    shell_cmd: "{{ is_windows | ternary('powershell.exe', 'bash') }}"
+    # User variable - can be overridden via command line with -e "user=username"
+    user: "{{ ansible_user_id | default(lookup('env', 'USER')) | default(ansible_user) }}"
+    # Define base paths
+    is_root_user: "{{ user == 'root' }}"
+    base_path: "{{ is_root_user | ternary('/root', '/home/' + user) }}"
+    vim_autoload_path: "{{ base_path }}/.vim/autoload"
+    vim_plugged_path: "{{ base_path }}/.vim/plugged"
+    vimrc_path: "{{ base_path }}/.vimrc"
 
   pre_tasks:
-    - name: Debug - Show path variables
+    - name: Debug - Show configuration
       debug:
         msg:
-          - "is_windows: {{ is_windows }}"
-          - "is_root: {{ is_root }}"
-          - "base_path: {{ base_path }}"
-          - "Current user: {{ user }}"
-          - "Vim autoload path: {{ vim_autoload_path }}"
-          - "Vimrc path: {{ vimrc_path }}"
-          - "Vim plugged path: {{ vim_plugged_path }}"
-          - "OS Family: {{ ansible_os_family }}"
-
-    - name: Check if vim is installed
-      command: which vim
-      register: vim_check
-      changed_when: false
-      failed_when: false
-
-    - name: Debug - Show vim installation status
-      debug:
-        msg: "Vim installation status: {{ vim_check.rc == 0 | ternary('Installed', 'Not installed') }}"
-
-    - name: Get vim version
-      command: vim --version
-      register: vim_version
-      changed_when: false
-      when: vim_check.rc == 0
-
-    - name: Debug - Show vim version
-      debug:
-        msg: "Vim version: {{ vim_version.stdout_lines[0] }}"
-      when: vim_check.rc == 0
+          - "Setting up Vim for user: {{ user }}"
+          - "Base path: {{ base_path }}"
+          - "Vim paths:"
+          - "  - autoload: {{ vim_autoload_path }}"
+          - "  - plugged: {{ vim_plugged_path }}"
+          - "  - vimrc: {{ vimrc_path }}"
 
   tasks:
-    # Windows-specific tasks
-    - name: Install Chocolatey (Windows package manager)
-      when: ansible_os_family == "Windows"
-      win_chocolatey:
-        name: chocolatey
-        state: present
-
-    - name: Install Vim and curl using Chocolatey on Windows
-      when: ansible_os_family == "Windows"
-      win_chocolatey:
-        name:
-          - vim
-          - curl
-        state: present
-
-    # macOS tasks
-    - name: Install Vim, curl, and bash on macOS
-      when: ansible_os_family == "Darwin"
-      homebrew:
-        name:
-          - vim
-          - curl
-        state: present
-
     # Debian/Ubuntu tasks
     - name: Install Vim, curl, and bash on Debian/Ubuntu
       when: ansible_os_family == "Debian"
@@ -120,7 +68,24 @@
         - "{{ vim_autoload_path }}"
         - "{{ vim_plugged_path }}"
 
-    # Download vim-plug with verification
+    # Copy .vimrc
+    - name: Copy .vimrc
+      copy:
+        dest: "{{ vimrc_path }}"
+        content: "\" Disable compatibility with vi which can cause unexpected issues.\nset nocompatible\n\n\" Enable type file detection. Vim will be able to try to detect the type of file in use.\nfiletype on\n\n\" Enable plugins and load plugin for the detected file type.\nfiletype plugin on\n\n\" Load an indent file for the detected file type.\nfiletype indent on\n\nset number\n\n\" Highlight cursor line underneath the cursor horizontally.\nset cursorline\n\n\" Highlight cursor line underneath the cursor vertically.\nset cursorcolumn\n\n\" Set shift width to 4 spaces.\nset shiftwidth=4\n\n\" Set tab width to 4 columns.\nset tabstop=4\n\n\" Use space characters instead of tabs.\nset expandtab\n\n\" Do not save backup files.\nset nobackup\n\n\" Do not let cursor scroll below or above N number of lines when scrolling.\nset scrolloff=10\n\n\" Do not wrap lines. Allow long lines to extend as far as the line goes.\nset nowrap\n\n\" While searching though a file incrementally highlight matching characters as you type.\nset incsearch\n\n\" Ignore capital letters during search.\nset ignorecase\n\n\" Override the ignorecase option if searching for capital letters.\n\" This will allow you to search specifically for capital letters.\nset smartcase\n\n\" Show partial command you type in the last line of the screen.\nset showcmd\n\n\" Show the mode you are on the last line.\nset showmode\n\n\" Show matching words during a search.\nset showmatch\n\n\" Use highlighting when doing a search.\nset hlsearch\n\n\" Set the commands to save in history default number is 20.\nset history=1000\n\n\" Enable auto completion menu after pressing TAB.\nset wildmenu\n\n\" Make wildmenu behave like similar to Bash completion.\nset wildmode=list:longest\n\n\" There are certain files that we would never want to edit with Vim.\n\" Wildmenu will ignore files with these extensions.\nset wildignore=*.docx,*.jpg,*.png,*.gif,*.pdf,*.pyc,*.exe,*.flv,*.img,*.xlsx\n\n\" PLUGINS ----------------------------------------------------------------\n\ncall plug#begin('{{ vim_plugged_path }}')\n\n  \" Linting and syntax checking\n  Plug 'dense-analysis/ale'\n  \n  \" File tree explorer\n  Plug 'preservim/nerdtree'\n  \n  \" Git integration\n  Plug 'tpope/vim-fugitive'\n  \n  \" Status line enhancement\n  Plug 'vim-airline/vim-airline'\n  Plug 'vim-airline/vim-airline-themes'\n\ncall plug#end()\n\n\" MAPPINGS ---------------------------------------------------------------\n\n\" Map NERDTree toggle to Ctrl+n\nnnoremap <C-n> :NERDTreeToggle<CR>\n\n\" Map ALE commands\nnnoremap <leader>d :ALEDetail<CR>\nnnoremap <leader>f :ALEFix<CR>\n\n\" VIMSCRIPT --------------------------------------------------------------\n\n\" This will enable code folding.\n\" Use the marker method of folding.\naugroup filetype_vim\n    autocmd!\n    autocmd FileType vim setlocal foldmethod=marker\naugroup END\n\n\" STATUS LINE ----------------------------------------------------------\n\n\" Clear status line when vimrc is reloaded.\nset statusline=\n\n\" Status line left side.\nset statusline+=\\ %F\\ %M\\ %Y\\ %R\n\n\" Use a divider to separate the left side from the right side.\nset statusline+=%=\n\n\" Status line right side.\nset statusline+=\\ ascii:\\ %b\\ hex:\\ 0x%B\\ row:\\ %l\\ col:\\ %c\\ percent:\\ %p%%\n\n\" Show the status on the second to last line.\nset laststatus=2\n"
+        owner: "{{ user }}"
+        group: "{{ user }}"
+        mode: '0644'
+
+    # Install vim-plug first
+    - name: Ensure .vim/autoload directory exists
+      file:
+        path: "{{ vim_autoload_path }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ user }}"
+        group: "{{ user }}"
+
     - name: Download vim-plug
       get_url:
         url: https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
@@ -132,224 +97,23 @@
         timeout: 30
         force: true
 
-    - name: Verify vim-plug installation
-      stat:
-        path: "{{ vim_autoload_path }}/plug.vim"
-      register: plug_check
-
-    - name: Debug - Show vim-plug installation status
-      debug:
-        msg: "Vim-plug installation status: {{ plug_check.stat.exists | ternary('Installed', 'Not installed') }}"
-
-    - name: Get vim-plug file info
-      command: sha256sum "{{ vim_autoload_path }}/plug.vim"
-      register: plug_checksum
-      changed_when: false
-      when: plug_check.stat.exists
-
-    - name: Debug - Show vim-plug checksum
-      debug:
-        msg: "Vim-plug checksum: {{ plug_checksum.stdout }}"
-      when: plug_check.stat.exists
-
-    # Copy .vimrc with verification
-    - name: Copy .vimrc
-      copy:
-        dest: "{{ vimrc_path }}"
-        content: |
-          {% raw %}
-          " Platform-specific settings
-          if has('win32') || has('win64')
-            set runtimepath^=C:/Users/{{ user }}/vimfiles
-            set runtimepath+=C:/Users/{{ user }}/vimfiles/after
-          endif
-
-          " Ensure vim-plug is loaded
-          if empty(glob('{{ vim_autoload_path }}/plug.vim'))
-            silent !curl -fLo {{ vim_autoload_path }}/plug.vim --create-dirs
-              \ https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-            autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
-          endif
-
-          " Disable compatibility with vi which can cause unexpected issues.
-          set nocompatible
-
-          " Enable type file detection. Vim will be able to try to detect the type of file in use.
-          filetype on
-
-          " Enable plugins and load plugin for the detected file type.
-          filetype plugin on
-
-          " Load an indent file for the detected file type.
-          filetype indent on
-
-          set number
-
-          " Highlight cursor line underneath the cursor horizontally.
-          set cursorline
-
-          " Highlight cursor line underneath the cursor vertically.
-          set cursorcolumn
-
-          " Set shift width to 4 spaces.
-          set shiftwidth=4
-
-          " Set tab width to 4 columns.
-          set tabstop=4
-
-          " Use space characters instead of tabs.
-          set expandtab
-
-          " Do not save backup files.
-          set nobackup
-
-          " Do not let cursor scroll below or above N number of lines when scrolling.
-          set scrolloff=10
-
-          " Do not wrap lines. Allow long lines to extend as far as the line goes.
-          set nowrap
-
-          " While searching though a file incrementally highlight matching characters as you type.
-          set incsearch
-
-          " Ignore capital letters during search.
-          set ignorecase
-
-          " Override the ignorecase option if searching for capital letters.
-          " This will allow you to search specifically for capital letters.
-          set smartcase
-
-          " Show partial command you type in the last line of the screen.
-          set showcmd
-
-          " Show the mode you are on the last line.
-          set showmode
-
-          " Show matching words during a search.
-          set showmatch
-
-          " Use highlighting when doing a search.
-          set hlsearch
-
-          " Set the commands to save in history default number is 20.
-          set history=1000
-
-          " Enable auto completion menu after pressing TAB.
-          set wildmenu
-
-          " Make wildmenu behave like similar to Bash completion.
-          set wildmode=list:longest
-
-          " There are certain files that we would never want to edit with Vim.
-          " Wildmenu will ignore files with these extensions.
-          set wildignore=*.docx,*.jpg,*.png,*.gif,*.pdf,*.pyc,*.exe,*.flv,*.img,*.xlsx
-
-          " PLUGINS ---------------------------------------------------------------- {{{
-
-          call plug#begin('{{ vim_plugged_path }}')
-
-            " Linting and syntax checking
-            Plug 'dense-analysis/ale'
-            
-            " File tree explorer
-            Plug 'preservim/nerdtree'
-            
-            " Git integration
-            Plug 'tpope/vim-fugitive'
-            
-            " Status line enhancement
-            Plug 'vim-airline/vim-airline'
-            Plug 'vim-airline/vim-airline-themes'
-
-          call plug#end()
-
-          " }}}
-
-          " MAPPINGS --------------------------------------------------------------- {{{
-
-          " Map NERDTree toggle to Ctrl+n
-          nnoremap <C-n> :NERDTreeToggle<CR>
-          
-          " Map ALE commands
-          nnoremap <leader>d :ALEDetail<CR>
-          nnoremap <leader>f :ALEFix<CR>
-
-          " }}}
-
-          " VIMSCRIPT -------------------------------------------------------------- {{{
-
-          " This will enable code folding.
-          " Use the marker method of folding.
-          augroup filetype_vim
-              autocmd!
-              autocmd FileType vim setlocal foldmethod=marker
-          augroup END
-
-          " }}}
-
-          " STATUS LINE ------------------------------------------------------------ {{{
-
-          " Clear status line when vimrc is reloaded.
-          set statusline=
-
-          " Status line left side.
-          set statusline+=\ %F\ %M\ %Y\ %R
-
-          " Use a divider to separate the left side from the right side.
-          set statusline+=%=
-
-          " Status line right side.
-          set statusline+=\ ascii:\ %b\ hex:\ 0x%B\ row:\ %l\ col:\ %c\ percent:\ %p%%
-
-          " Show the status on the second to last line.
-          set laststatus=2
-
-          " }}}
-          {% endraw %}
-        owner: "{{ user }}"
-        group: "{{ user }}"
-        mode: '0644'
-
-    - name: Verify .vimrc installation
-      stat:
-        path: "{{ vimrc_path }}"
-      register: vimrc_check
-
-    - name: Debug - Show .vimrc installation status
-      debug:
-        msg: "Vimrc installation status: {{ vimrc_check.stat.exists | ternary('Installed', 'Not installed') }}"
-
-    # Install plugins with better error handling
+    # Install plugins
     - name: Install Vim plugins
       become: yes
       become_user: "{{ user }}"
-      shell: "{{ shell_cmd }} -lc 'vim -c \"PlugInstall\" -c \"qa!\"'"
+      shell: "bash -lc 'vim -c \"PlugInstall\" -c \"qa!\"'"
       args:
-        executable: "{{ shell_cmd }}"
+        executable: /bin/bash
       register: plugin_install
       changed_when: "'Already up to date' not in plugin_install.stdout"
       failed_when: false
 
-    - name: Debug - Show plugin installation output
-      debug:
-        msg: "{{ plugin_install.stdout_lines }}"
-
-    - name: Verify plugin installation
-      stat:
-        path: "{{ vim_plugged_path }}"
-      register: plugin_dir_check
-
-    - name: Debug - Show plugin directory status
-      debug:
-        msg: "Plugin directory status: {{ plugin_dir_check.stat.exists | ternary('Exists', 'Does not exist') }}"
-
+    # Verify installation
     - name: List installed plugins
       command: ls -la "{{ vim_plugged_path }}"
       register: plugin_list
       changed_when: false
-      when: plugin_dir_check.stat.exists
 
     - name: Debug - Show installed plugins
       debug:
         msg: "{{ plugin_list.stdout_lines }}"
-      when: plugin_dir_check.stat.exists

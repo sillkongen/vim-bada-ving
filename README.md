@@ -1,11 +1,10 @@
 # Vim Setup with Ansible
 
-This Ansible playbook automates the setup of Vim with a modern configuration and useful plugins across different operating systems. It provides a consistent Vim environment whether you're on Windows, macOS, or Linux.
+This Ansible playbook automates the setup of Vim with a modern configuration and useful plugins for Unix-like operating systems. It provides a consistent Vim environment on macOS and Linux.
 
 ## Features
 
-- Cross-platform support:
-  - Windows (using Chocolatey)
+- Platform support:
   - macOS (using Homebrew)
   - Debian/Ubuntu (using apt)
   - RHEL/CentOS (using yum)
@@ -28,9 +27,6 @@ This Ansible playbook automates the setup of Vim with a modern configuration and
 
 - Ansible 2.9 or higher
 - Python 3.6 or higher
-- For Windows:
-  - PowerShell 5.1 or higher
-  - Chocolatey (will be installed automatically if not present)
 - For macOS:
   - Homebrew (will be installed automatically if not present)
 - For Linux:
@@ -44,11 +40,21 @@ This Ansible playbook automates the setup of Vim with a modern configuration and
    cd vim-bada-ving
    ```
 
-2. Run the playbook:
+2. Configure the user (optional):
+   The playbook uses variables to determine which user to configure Vim for:
+   - `user`: The username for whom to install and configure Vim (defaults to current user)
+   - `user_home`: The home directory of the user (automatically determined)
+   
+   You can set these variables in several ways:
+   - Using command line: `-e "user=username"`
+   - Using an inventory file
+   - Using group_vars or host_vars
+   - Using an external variables file
 
-   For Unix-like systems (Linux/macOS):
+3. Run the playbook:
+
    ```bash
-   # For current user
+   # For current user (default)
    ansible-playbook vimcentvega.yml
 
    # For specific user
@@ -58,11 +64,26 @@ This Ansible playbook automates the setup of Vim with a modern configuration and
    sudo ansible-playbook vimcentvega.yml -e "user=root"
    ```
 
-   For Windows:
-   ```bash
-   # Run in PowerShell as Administrator
-   ansible-playbook vimcentvega.yml -e "ansible_connection=local"
-   ```
+## User Configuration
+
+The playbook handles user configuration in the following ways:
+
+- **Default Behavior**: If no user is specified, the playbook configures Vim for the current user
+- **Specific User**: You can target a specific user by setting the `user` variable
+- **Multiple Users**: To configure Vim for multiple users, run the playbook multiple times with different user variables
+- **Root User**: Special care is taken when configuring for the root user to ensure proper permissions
+
+Example configurations:
+```bash
+# Configure for a specific user with custom settings
+ansible-playbook vimcentvega.yml -e "user=developer"
+
+# Configure for root with specific settings
+sudo ansible-playbook vimcentvega.yml -e "user=root"
+
+# Configure for current user with debug output
+ansible-playbook vimcentvega.yml -v
+```
 
 ## Customization
 
@@ -91,11 +112,7 @@ The Vim configuration is defined in the playbook's `vimrc` content section. You 
      ansible-playbook vimcentvega.yml -v
      ```
 
-2. **Path Issues on Windows**
-   - Ensure you're running PowerShell as Administrator
-   - Check if the user paths are correct in the debug output
-
-3. **Permission Issues on Linux/macOS**
+2. **Permission Issues on Linux/macOS**
    - Use `sudo` when running for root or other users
    - Check directory permissions with `ls -la ~/.vim`
 
