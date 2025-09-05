@@ -1,8 +1,9 @@
 ---
-- name: Setup Vim with Plugins for a specific user (Unix/Linux only)
+- name: Setup Vim with Plugins for a specific user (Linux only)
   hosts: localhost
   connection: local
   become: yes
+
   vars:
     # User variable - can be overridden via command line with -e "user=username"
     user: "{{ ansible_user_id | default(lookup('env', 'USER')) | default(ansible_user) }}"
@@ -25,38 +26,17 @@
           - "  - vimrc: {{ vimrc_path }}"
 
   tasks:
-    # Debian/Ubuntu tasks
-    - name: Install Vim, curl, and bash on Debian/Ubuntu
-      when: ansible_os_family == "Debian"
-      apt:
+    # Install dependencies across distros
+    - name: Install Vim, curl, and bash
+      package:
         name:
           - vim
           - curl
           - bash
         state: present
-        update_cache: yes
+#      update_cache: yes
 
-    # RHEL/CentOS tasks
-    - name: Install Vim, curl, and bash on RHEL/CentOS
-      when: ansible_os_family == "RedHat"
-      yum:
-        name:
-          - vim-enhanced
-          - curl
-          - bash
-        state: present
-
-    # Alpine Linux tasks
-    - name: Install Vim, curl, and bash on Alpine Linux
-      when: ansible_os_family == "Alpine"
-      apk:
-        name:
-          - vim
-          - curl
-          - bash
-        state: present
-
-    # Create Vim directories with proper permissions
+    # Create Vim directories
     - name: Create Vim directories
       file:
         path: "{{ item }}"
@@ -64,7 +44,7 @@
         mode: '0755'
         owner: "{{ user }}"
         group: "{{ user }}"
-      with_items:
+      loop:
         - "{{ vim_autoload_path }}"
         - "{{ vim_plugged_path }}"
 
@@ -72,20 +52,67 @@
     - name: Copy .vimrc
       copy:
         dest: "{{ vimrc_path }}"
-        content: "\" Disable compatibility with vi which can cause unexpected issues.\nset nocompatible\n\n\" Enable type file detection. Vim will be able to try to detect the type of file in use.\nfiletype on\n\n\" Enable plugins and load plugin for the detected file type.\nfiletype plugin on\n\n\" Load an indent file for the detected file type.\nfiletype indent on\n\nset number\n\n\" Highlight cursor line underneath the cursor horizontally.\nset cursorline\n\n\" Highlight cursor line underneath the cursor vertically.\nset cursorcolumn\n\n\" Set shift width to 4 spaces.\nset shiftwidth=4\n\n\" Set tab width to 4 columns.\nset tabstop=4\n\n\" Use space characters instead of tabs.\nset expandtab\n\n\" Do not save backup files.\nset nobackup\n\n\" Do not let cursor scroll below or above N number of lines when scrolling.\nset scrolloff=10\n\n\" Do not wrap lines. Allow long lines to extend as far as the line goes.\nset nowrap\n\n\" While searching though a file incrementally highlight matching characters as you type.\nset incsearch\n\n\" Ignore capital letters during search.\nset ignorecase\n\n\" Override the ignorecase option if searching for capital letters.\n\" This will allow you to search specifically for capital letters.\nset smartcase\n\n\" Show partial command you type in the last line of the screen.\nset showcmd\n\n\" Show the mode you are on the last line.\nset showmode\n\n\" Show matching words during a search.\nset showmatch\n\n\" Use highlighting when doing a search.\nset hlsearch\n\n\" Set the commands to save in history default number is 20.\nset history=1000\n\n\" Enable auto completion menu after pressing TAB.\nset wildmenu\n\n\" Make wildmenu behave like similar to Bash completion.\nset wildmode=list:longest\n\n\" There are certain files that we would never want to edit with Vim.\n\" Wildmenu will ignore files with these extensions.\nset wildignore=*.docx,*.jpg,*.png,*.gif,*.pdf,*.pyc,*.exe,*.flv,*.img,*.xlsx\n\n\" PLUGINS ----------------------------------------------------------------\n\ncall plug#begin('{{ vim_plugged_path }}')\n\n  \" Linting and syntax checking\n  Plug 'dense-analysis/ale'\n  \n  \" File tree explorer\n  Plug 'preservim/nerdtree'\n  \n  \" Git integration\n  Plug 'tpope/vim-fugitive'\n  \n  \" Status line enhancement\n  Plug 'vim-airline/vim-airline'\n  Plug 'vim-airline/vim-airline-themes'\n\ncall plug#end()\n\n\" MAPPINGS ---------------------------------------------------------------\n\n\" Map NERDTree toggle to Ctrl+n\nnnoremap <C-n> :NERDTreeToggle<CR>\n\n\" Map ALE commands\nnnoremap <leader>d :ALEDetail<CR>\nnnoremap <leader>f :ALEFix<CR>\n\n\" VIMSCRIPT --------------------------------------------------------------\n\n\" This will enable code folding.\n\" Use the marker method of folding.\naugroup filetype_vim\n    autocmd!\n    autocmd FileType vim setlocal foldmethod=marker\naugroup END\n\n\" STATUS LINE ----------------------------------------------------------\n\n\" Clear status line when vimrc is reloaded.\nset statusline=\n\n\" Status line left side.\nset statusline+=\\ %F\\ %M\\ %Y\\ %R\n\n\" Use a divider to separate the left side from the right side.\nset statusline+=%=\n\n\" Status line right side.\nset statusline+=\\ ascii:\\ %b\\ hex:\\ 0x%B\\ row:\\ %l\\ col:\\ %c\\ percent:\\ %p%%\n\n\" Show the status on the second to last line.\nset laststatus=2\n"
+        content: |
+          " Disable compatibility with vi which can cause unexpected issues.
+          set nocompatible
+
+          " Enable filetype detection, plugins, and indentation
+          filetype on
+          filetype plugin on
+          filetype indent on
+
+          set number
+          set cursorline
+          set cursorcolumn
+          set shiftwidth=4
+          set tabstop=4
+          set expandtab
+          set nobackup
+          set scrolloff=10
+          set nowrap
+          set incsearch
+          set ignorecase
+          set smartcase
+          set showcmd
+          set showmode
+          set showmatch
+          set hlsearch
+          set history=1000
+          set wildmenu
+          set wildmode=list:longest
+          set wildignore=*.docx,*.jpg,*.png,*.gif,*.pdf,*.pyc,*.exe,*.flv,*.img,*.xlsx
+
+          " PLUGINS --------------------------------------------------------------
+          call plug#begin('{{ vim_plugged_path }}')
+            Plug 'dense-analysis/ale'
+            Plug 'preservim/nerdtree'
+            Plug 'tpope/vim-fugitive'
+            Plug 'vim-airline/vim-airline'
+            Plug 'vim-airline/vim-airline-themes'
+          call plug#end()
+
+          " MAPPINGS -------------------------------------------------------------
+          nnoremap <C-n> :NERDTreeToggle<CR>
+          nnoremap <leader>d :ALEDetail<CR>
+          nnoremap <leader>f :ALEFix<CR>
+
+          " VIMSCRIPT ------------------------------------------------------------
+          augroup filetype_vim
+              autocmd!
+              autocmd FileType vim setlocal foldmethod=marker
+          augroup END
+
+          " STATUS LINE ----------------------------------------------------------
+          set statusline=
+          set statusline+=\ %F\ %M\ %Y\ %R
+          set statusline+=%=
+          set statusline+=\ ascii:\ %b\ hex:\ 0x%B\ row:\ %l\ col:\ %c\ percent:\ %p%%
+          set laststatus=2
         owner: "{{ user }}"
         group: "{{ user }}"
         mode: '0644'
 
-    # Install vim-plug first
-    - name: Ensure .vim/autoload directory exists
-      file:
-        path: "{{ vim_autoload_path }}"
-        state: directory
-        mode: '0755'
-        owner: "{{ user }}"
-        group: "{{ user }}"
-
+    # Download vim-plug
     - name: Download vim-plug
       get_url:
         url: https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
@@ -101,7 +128,7 @@
     - name: Install Vim plugins
       become: yes
       become_user: "{{ user }}"
-      shell: "bash -lc 'vim -c \"PlugInstall\" -c \"qa!\"'"
+      shell: "bash -lc 'vim -c \"PlugInstall --sync\" -c \"qa!\"'"
       args:
         executable: /bin/bash
       register: plugin_install
@@ -117,3 +144,4 @@
     - name: Debug - Show installed plugins
       debug:
         msg: "{{ plugin_list.stdout_lines }}"
+
