@@ -20,13 +20,23 @@
         msg:
           - "Setting up Vim for user: {{ user }}"
           - "Base path: {{ base_path }}"
+          - "Distribution: {{ ansible_distribution | default('Unknown') }}"
+          - "Package manager: {{ ansible_pkg_mgr | default('auto-detect') }}"
           - "Vim paths:"
           - "  - autoload: {{ vim_autoload_path }}"
           - "  - plugged: {{ vim_plugged_path }}"
           - "  - vimrc: {{ vimrc_path }}"
 
   tasks:
+    # Update package cache for Arch Linux (pacman doesn't support update_cache in package module)
+    - name: Update pacman package cache (Arch Linux)
+      command: pacman -Sy
+      when: ansible_distribution == "Archlinux"
+      changed_when: false
+      failed_when: false
+
     # Install dependencies across distros
+    # The package module automatically detects the correct package manager
     - name: Install Vim, curl, and bash
       package:
         name:
@@ -34,7 +44,6 @@
           - curl
           - bash
         state: present
-#      update_cache: yes
 
     # Create Vim directories
     - name: Create Vim directories

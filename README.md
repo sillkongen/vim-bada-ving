@@ -9,6 +9,7 @@ This Ansible playbook automates the setup of Vim with a modern configuration and
   - Debian/Ubuntu (using apt)
   - RHEL/CentOS (using yum)
   - Alpine Linux (using apk)
+  - Arch Linux (using pacman)
 - Automatic installation of vim-plug plugin manager
 - Pre-configured with useful plugins:
   - [ALE](https://github.com/dense-analysis/ale) - Asynchronous Lint Engine
@@ -30,7 +31,7 @@ This Ansible playbook automates the setup of Vim with a modern configuration and
 - For macOS:
   - Homebrew (will be installed automatically if not present)
 - For Linux:
-  - Appropriate package manager (apt, yum, or apk)
+  - Appropriate package manager (apt, yum, apk, or pacman)
 
 ## Installation
 
